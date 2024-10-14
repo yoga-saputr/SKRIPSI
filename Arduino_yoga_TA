@@ -1,0 +1,218 @@
+#include <SoftwareSerial.h>
+#include <LiquidCrystal_I2C.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <DS3231.h>
+
+#define r1 13 //relay punya Pakan
+#define r2 12  //relay punya ph UP 
+#define r3 11  //relay punya ph DOWN
+#define r4 10  //relay punya peltier&kipas
+
+
+//relay
+String R1;
+String R2;
+String R3;
+String R4;
+
+SoftwareSerial DataSerial(0, 1);  // 34 RX, 35 TX
+DS3231 rtc(SDA,SCL);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//suhu
+const int oneWireBusPin = 4;  //pin data sensor suhu
+float celsius;
+
+//pH
+int Nilai_pH;
+float Tegangan;
+float Po;
+float ph_step;
+double TeganganpH;
+
+//untuk kalibrasi
+float PH4 = 2.195;
+float PH7 = 1.750;
+
+
+//RTC
+bool on=LOW; //rtc
+bool off=HIGH; //rtc
+String waktu;
+
+
+//lampu led
+int led1 = 5;
+int led2 = 6;
+int led3 = 7;
+
+
+
+
+// Inisialisasi objek OneWire dan DallasTemperature suhu
+OneWire oneWire(oneWireBusPin);
+DallasTemperature sensors(&oneWire);
+
+void setup() {
+  digitalWrite(r1, HIGH);
+  digitalWrite(r2, HIGH);
+  digitalWrite(r3, HIGH);
+  digitalWrite(r4, HIGH);
+  Serial.begin(9600);
+  DataSerial.begin(9600);
+  pinMode(Nilai_pH, INPUT);  //nilai ph input
+  pinMode(r1, OUTPUT);       // pH UP
+  pinMode(r2, OUTPUT);       // pH DOWN
+  pinMode(r3, OUTPUT);  // relay ph pakan
+  pinMode(r4, OUTPUT);  // peltier kipas
+  pinMode(5, OUTPUT); // led
+  pinMode(6, OUTPUT);
+  pinMode(7, OUTPUT);
+  lcd.begin();
+  rtc.begin();
+  sensors.begin();
+}
+
+void loop() {
+  //baca permintaan dari nodemcu
+    String minta = "";
+    //baca permintaan nodemcu
+    while(Serial.available()>0)
+    {
+      minta += char(Serial.read());
+    }
+    //buang spasi data yang diterima
+    minta.trim();
+    //uji variabel minta
+    if (minta == "iya")
+    {
+      //kirim datanya
+      datakirim();
+    }
+    minta = "";
+
+    suhu();
+    pH();
+    kondisi();
+    layarlcd();
+    datakirim();
+    penjadwalan();
+
+    delay(1500);
+}
+ 
+ void pH () {
+    // sensor ph
+  Nilai_pH = analogRead(2);
+  // Serial.print("Nilai adc ph: ");
+  // Serial.println(Nilai_pH) ;
+  Tegangan = Nilai_pH * (5 / 1023.0);
+  // Serial.print("Tegangan: ");
+  // Serial.println(Tegangan, 3);
+
+  ph_step = (PH4 - PH7) / 3;
+  Po = 7.00 + ((PH7 - Tegangan) / ph_step);
+  // Serial.print("Nilai cairan pH: ");
+  // Serial.println(Po, 2);
+  // Serial.println("");
+  /* ph_step = (Tegangan ph4 - Tegangan ph7) / (ph7 - ph4)
+           = (3.1 - 2.6) / (7-4)
+           = 0.6 / 3
+           = 0.2
+            */
+ }
+ void kondisi() {
+
+    //kondisi if untuk ph Down
+  if (Po > 9) {
+    digitalWrite(r3, LOW); //r3 pin 11
+    R3 ="Hidup";
+    digitalWrite(5, HIGH);
+    delay(500);
+    digitalWrite(r3, HIGH);
+    delay(2700);
+  } else {
+    digitalWrite(r3, HIGH);
+    R3 = "Mati";
+    digitalWrite(5, LOW);
+  }
+  //kondisi if untuk ph UP 
+  if (Po < 6.5) {
+    digitalWrite(r2, LOW); //r2 pin 12
+    R2 ="Hidup";
+    digitalWrite(6, HIGH);
+    delay(500);
+    digitalWrite(r2, HIGH);
+    delay(2700);
+  } else {
+    digitalWrite(r2, HIGH);
+    R2 = "Mati";
+    digitalWrite(6, LOW);
+  }
+    //pompa pakan
+    if(waktu== "17:13:00"){
+    R1 = "Hidup";
+    digitalWrite(r1,on); //r3 pin 11
+    digitalWrite(7, HIGH);
+    delay(3000);
+    R1 ="Mati";
+    digitalWrite(r1,off);
+    digitalWrite(7, LOW);
+  }
+  if(waktu== "17:13:30"){
+    R1 = "Hidup";
+    digitalWrite(r1,on);
+    digitalWrite(7, HIGH);
+    delay(3000);
+    R1 ="Mati";
+    digitalWrite(r1,off);
+    digitalWrite(7, LOW);
+  }else{
+    R1 ="Mati";
+    digitalWrite(r1,off);
+  }
+ }
+
+void layarlcd() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("P:");
+  lcd.print(Po, 2);
+   lcd.print(" ");
+   lcd.print("S:");
+  lcd.print(celsius,2);
+  lcd.setCursor(0, 1);
+  lcd.print("Jam: ");
+  lcd.print(waktu);
+  
+}
+
+void datakirim() {
+  //Data_kirim nilai ph # nilai suhu
+  String datakirim = String(Po) + "#" + String(celsius) +"#" + String(R1) + "#" + String(R2) + "#" + String(R3) + "#" + String(R4);
+  Serial.println(datakirim);
+  Serial.println("");
+  }
+
+  void penjadwalan() {
+  waktu=rtc.getTimeStr();
+  Serial.println(waktu);
+  }
+
+void suhu() {
+
+    sensors.requestTemperatures();  // Minta sensor untuk membaca suhu
+  // Baca suhu dalam Celsius dan Fahrenheit
+    celsius = sensors.getTempCByIndex(0);
+
+   //kondisi if untuk peltier pendingin
+  if (celsius > 32) {
+    R4="Hidup";
+    digitalWrite(r4, LOW); //r4 pin 10
+  } else {
+    R4="Mati";
+    digitalWrite(r4, HIGH);
+  }
+}
+
