@@ -1,0 +1,128 @@
+  #include <HTTPClient.h>
+  #include "SoftwareSerial.h"
+  SoftwareSerial DataSerial(34, 35); // RX,  TX
+
+  // data parsing
+  String arrayData[6];
+  String pH;
+  String Suhu;
+  String R1;
+  String R2;
+  String R3;
+  String R4;
+
+
+    //sandi wifi
+  const char* ssid = "12345678" ;
+  const char* password = "12345678" ;
+  //ip/nama domain
+  const char* server = "192.168.104.6" ;
+
+
+  void setup() {  
+    Serial.begin(9600);
+    DataSerial.begin(9600);
+     //koneksi ke wifi
+    WiFi.hostname ("NodeMCU") ;
+    WiFi.begin (ssid, password);
+
+    //uji wifi
+   while (WiFi.status() != WL_CONNECTED)
+   {
+    Serial.println("tidak terhubung");
+    delay(500);
+   }
+    //apabila terhubung
+    Serial.println("Terhubung");
+  }
+ 
+  void loop() {
+      //millis pengganti delay
+  unsigned long previousMillis = 0;
+  const long interval = 1000;
+    unsigned long currentMillis = millis();
+    if(currentMillis - previousMillis >= interval)
+    {
+    pecahdata();
+    DataSerial.println("Ya");
+      //update millis
+    previousMillis = currentMillis;
+
+  }
+  kirimdata();
+  }
+  void kirimdata() {
+    //pengiriman data sensor
+      WiFiClient wClient ;
+    //cek koneksi ke web server
+    const int httpPort = 80;
+    if(!wClient.connect(server, httpPort))
+     {
+      Serial.println("gagal konek ke web");
+      return;
+     }
+//proses pengiriman data
+      String url;
+      HTTPClient http; //protokol http
+       url = "http://" + String(server) + "/loginMoina2/public/simpan/" + String(pH) + "/" + String(Suhu) + "/"  + String(R1) + "/" + String(R2) + "/" + String(R3)+ "/" + String(R4);
+      //http://192.162.80.6/SensorMoina/public/simpan/23/24/r1pompa pakan/r2pompa up/r3pompa down/r4suhu
+      Serial.println(url);
+      
+
+      //eksekusi url
+      http.begin(wClient, url);
+      http.GET() ;
+      http.end() ;
+  }
+
+
+  void pecahdata() {
+    // prioritaskan pembacaan data dari arduino uno
+    String data = "";
+    
+    // baca data serial
+    while (DataSerial.available() > 0) {
+        data += char(DataSerial.read());
+    }
+    data.trim();  // buang spasi di awal/akhir
+    
+    // uji data
+    if (data != "") {
+        int index = 0;
+        for (int i = 0; i < data.length(); i++) {  // gunakan < daripada <=
+            char delimiter = '#';
+            if (data[i] != delimiter) {
+                arrayData[index] += data[i];
+            } else {
+                index++;  // pindah ke elemen berikutnya di array
+            }
+        }
+        
+        // pastikan data yang dikirim lengkap (index == 5)
+        if (index == 5) {
+            pH = arrayData[0];
+            Suhu = arrayData[1];
+            R1 = arrayData[2];
+            R2 = arrayData[3];
+            R3 = arrayData[4];
+            R4 = arrayData[5];
+            
+            // tampilkan nilai sensor ke serial monitor
+            Serial.println("nilai pH : " + String(pH));
+            Serial.println("nilai Suhu : " + String(Suhu));
+            Serial.println("nilai pakan: " + String(R1));
+            Serial.println("pompa Up : " + String(R2));
+            Serial.println("pompa Down : " + String(R3));
+            Serial.println("Peltier : " + String(R4));
+            Serial.println();
+            
+            // reset arrayData setelah pengiriman
+            arrayData[0] = "";
+            arrayData[1] = "";
+            arrayData[2] = "";
+            arrayData[3] = "";
+            arrayData[4] = "";
+            arrayData[5] = "";
+        }
+    }
+}
