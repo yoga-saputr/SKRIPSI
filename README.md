@@ -1,0 +1,2 @@
+# SKRIPSI
+data tugas akhir
